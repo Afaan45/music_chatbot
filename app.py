@@ -1,35 +1,80 @@
 import os
 from flask import Flask, render_template, request, jsonify
-from spotify_client import search_track
+from spotify_client import get_token, search_track, get_recommendations
 
 app = Flask(__name__)
 
-@app.route("/")
+collections = {}
+
+@app.route('/')
 def index():
-    return render_template("index.html")
+    return render_template('index.html', collections=list(collections.keys()), current_collection=None, tracks=[])
 
-@app.route("/get", methods=["POST"])
-def chatbot_response():
-    user_input = request.form["msg"]
+@app.route('/search', methods=['POST'])
+def search():
+    data = request.json
+    query = data.get("query", "")
+    token = get_token()
 
-    # Call the Spotify search
-    results = search_track(user_input)
+    if not query:
+        return jsonify([])
 
-    if "error" in results:
-        reply = "🤖 Sorry, I couldn't connect to Spotify right now."
-    elif results.get("tracks") and results["tracks"]["items"]:
-        reply = "🎵 Here are some tracks you might like:\n"
-        for item in results["tracks"]["items"]:
-            name = item["name"]
-            artist = item["artists"][0]["name"]
-            album_art = item["album"]["images"][0]["url"]
-            link = item["external_urls"]["spotify"]
-            reply += f"<br><strong>{name}</strong> by {artist} <br><a href='{link}' target='_blank'><img src='{album_art}' width='100'></a><br><br>"
-    else:
-        reply = "🤖 Sorry, I couldn't find any songs related to that."
+    results = search_track(query, token)
+    return jsonify(results)
 
-    return jsonify({"reply": reply})
+@app.route('/create_collection', methods=['POST'])
+def create_collection():
+    data = request.json
+    name = data.get("name", "").strip()
+
+    if name and name not in collections:
+        collections[name] = []
+
+    return jsonify({"collections": list(collections.keys())})
+
+@app.route('/add_to_collection', methods=['POST'])
+def add_to_collection():
+    data = request.json
+    collection = data.get("collection")
+    track = data.get("track")
+
+    if collection and track:
+        collections[collection].append(track)
+
+    return jsonify({"status": "success"})
+
+@app.route('/view_collection', methods=['POST'])
+def view_collection():
+    data = request.json
+    collection = data.get("collection")
+
+    tracks = collections.get(collection, [])
+    return jsonify({"tracks": tracks})
+
+@app.route('/recommend', methods=['POST'])
+def recommend():
+    data = request.json
+    collection = data.get("collection")
+    tracks = collections.get(collection, [])
+
+    if not tracks:
+        return jsonify([])
+
+    last_track = tracks[-1]
+    last_track_id = last_track.get("id")
+    artist_id = last_track.get("artist_id")
+    genre = last_track.get("genre") or "pop"
+
+    print("📡 RECOMMEND INPUT:")
+    print("Track ID:", last_track_id)
+    print("Artist ID:", artist_id)
+    print("Genre:", genre)
+
+    token = get_token()
+    recs = get_recommendations(track_id=last_track_id, artist_id=artist_id, genre=genre, token=token)
+
+    return jsonify(recs)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(debug=True, port=port)

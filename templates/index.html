@@ -1,49 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🎧 Music Recommender Bot</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <title>🎵 Music Recommender Bot</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #1DB954;
+    }
+    input, button, select {
+      padding: 10px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+    }
+    input {
+      width: 300px;
+    }
+    .song, .recommendation {
+      display: inline-block;
+      background: #181818;
+      margin: 10px;
+      padding: 10px;
+      border-radius: 8px;
+      width: 150px;
+      text-align: center;
+    }
+    img {
+      width: 100%;
+      border-radius: 4px;
+    }
+    .plus-icon {
+      cursor: pointer;
+      color: #1DB954;
+      font-size: 20px;
+    }
+    #songs, #collection_songs, #recommendations {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #1DB954;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #14833b;
+    }
+    hr {
+      margin: 20px 0;
+      border-color: #333;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>🎧 Ask Me for Music</h1>
-    <div id="chatbox">
-      <div class="botText">🤖 Hello! Tell me a song, artist, or genre you like.</div>
-    </div>
-    <div id="userInput">
-      <input type="text" id="textInput" placeholder="e.g., I like Bohemian Rhapsody..." />
-      <button onclick="sendMessage()">Send</button>
-    </div>
-  </div>
+  <h1>🎧 Music Recommender</h1>
+
+  <input type="text" id="collectionName" placeholder="New Collection Name">
+  <button onclick="createCollection()">Create Collection</button>
+  <select id="collectionDropdown">
+    <option value="">Select Collection</option>
+  </select>
+  <hr>
+
+  <input type="text" id="query" placeholder="Search for a song...">
+  <button onclick="search()">Search</button>
+  <div id="songs"></div>
+  <hr>
+
+  <button onclick="viewCollection()">📂 View Collection</button>
+  <div id="collection_songs"></div>
+  <hr>
+
+  <button onclick="getRecommendations()">🎯 Get Recommendations</button>
+  <div id="recommendations"></div>
 
   <script>
-    function sendMessage() {
-      const userText = document.getElementById("textInput").value;
-      if (!userText.trim()) return;
+    let viewed = false;
 
-      const chatbox = document.getElementById("chatbox");
-
-      chatbox.innerHTML += `<div class='userText'>🧑‍💻 ${userText}</div>`;
-      document.getElementById("textInput").value = "";
-
-      fetch("/get", {
+    function createCollection() {
+      const name = document.getElementById("collectionName").value;
+      if (!name) return alert("Please enter a name");
+      fetch("/create_collection", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `msg=${encodeURIComponent(userText)}`
-      })
-      .then(response => response.json())
-      .then(data => {
-        chatbox.innerHTML += `<div class='botText'>${data.reply}</div>`;
-        chatbox.scrollTop = chatbox.scrollHeight;
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+      }).then(res => res.json()).then(data => {
+        alert(data.message);
+        if (data.success) {
+          const option = new Option(name, name);
+          document.getElementById("collectionDropdown").append(option);
+        }
       });
     }
 
-    document.getElementById("textInput")
-      .addEventListener("keypress", function (e) {
-        if (e.key === "Enter") sendMessage();
+    function search() {
+      const query = document.getElementById("query").value;
+      fetch("/search", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query})
+      }).then(res => res.json()).then(songs => {
+        const container = document.getElementById("songs");
+        container.innerHTML = "";
+        songs.forEach(song => {
+          const div = document.createElement("div");
+          div.className = "song";
+          div.innerHTML = `
+            <img src="${song.image}">
+            <p><strong>${song.name}</strong><br>${song.artist}</p>
+            <i class="fas fa-plus-circle plus-icon" onclick="addToCollection('${song.id}')"></i>
+          `;
+          container.appendChild(div);
+        });
       });
+    }
+
+    function addToCollection(track_id) {
+      const collection = document.getElementById("collectionDropdown").value;
+      if (!collection) return alert("Select a collection");
+      fetch("/add_to_collection", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({track_id, collection})
+      }).then(res => res.json()).then(data => {
+        alert(data.message);
+      });
+    }
+
+    function viewCollection() {
+      const collection = document.getElementById("collectionDropdown").value;
+      if (!collection) return alert("Select a collection");
+      fetch("/view_collection", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({collection})
+      }).then(res => res.json()).then(data => {
+        const container = document.getElementById("collection_songs");
+        container.innerHTML = "";
+        if (data.success) {
+          viewed = true;
+          data.tracks.forEach(song => {
+            const div = document.createElement("div");
+            div.className = "song";
+            div.innerHTML = `
+              <img src="${song.image}">
+              <p><strong>${song.name}</strong><br>${song.artist}</p>
+              <a href="${song.url}" target="_blank">▶️</a>
+            `;
+            container.appendChild(div);
+          });
+        } else {
+          alert(data.message);
+        }
+      });
+    }
+
+    function getRecommendations() {
+      if (!viewed) {
+        alert("Please view a collection first.");
+        return;
+      }
+      const collection = document.getElementById("collectionDropdown").value;
+      if (!collection) return alert("Select a collection");
+
+      fetch("/recommend", {
+        method: "POST",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({collection})
+      }).then(res => res.json()).then(data => {
+        const container = document.getElementById("recommendations");
+        container.innerHTML = "";
+        if (data.success) {
+          data.results.forEach(song => {
+            const div = document.createElement("div");
+            div.className = "recommendation";
+            div.innerHTML = `
+              <img src="${song.image}">
+              <p><strong>${song.name}</strong><br>${song.artist}</p>
+              <a href="${song.url}" target="_blank">▶️ Listen</a>
+            `;
+            container.appendChild(div);
+          });
+        } else {
+          alert(data.message);
+        }
+      });
+    }
   </script>
 </body>
 </html>
